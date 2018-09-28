@@ -13,7 +13,8 @@ from celery.schedules import crontab
 # -----------------------------------------------------------------------------------
 # Default to debugging
 # -----------------------------------------------------------------------------------
-DEBUG = True
+DEBUG = False
+ALLOWED_HOSTS=['*']
 
 # -----------------------------------------------------------------------------------
 # Sets TESTING to True if this configuration is read during a unit test
@@ -31,13 +32,21 @@ MANAGERS = ADMINS
 POSTGIS_VERSION = (2, 1)
 
 # -----------------------------------------------------------------------------------
+# postgres
+# -----------------------------------------------------------------------------------
+
+POSTGRES_PASSWORD = os.getenv('POSTGRES_ENV_TEMBAPASSWD')
+POSTGRES_HOST = os.getenv('POSTGRES_PORT_5432_TCP_ADDR')
+POSTGRES_PORT = int(os.getenv('POSTGRES_PORT_5432_TCP_PORT'))
+
+# -----------------------------------------------------------------------------------
 # set the mail settings, override these in your settings.py
 # if your site was at http://temba.io, it might look like this:
 # -----------------------------------------------------------------------------------
-EMAIL_HOST = "smtp.gmail.com"
-EMAIL_HOST_USER = "server@temba.io"
-DEFAULT_FROM_EMAIL = "server@temba.io"
-EMAIL_HOST_PASSWORD = "mypassword"
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
+DEFAULT_FROM_EMAIL = os.getenv('EMAIL_HOST_USER')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
 EMAIL_USE_TLS = True
 
 # Used when sending email from within a flow and the user hasn't configured
@@ -48,15 +57,13 @@ FLOW_FROM_EMAIL = "no-reply@temba.io"
 OUTGOING_REQUEST_HEADERS = {"User-agent": "RapidPro"}
 
 # where recordings and exports are stored
-AWS_STORAGE_BUCKET_NAME = "dl-temba-io"
-AWS_BUCKET_DOMAIN = AWS_STORAGE_BUCKET_NAME + ".s3.amazonaws.com"
-STORAGE_ROOT_DIR = "test_orgs" if TESTING else "orgs"
+#AWS_STORAGE_BUCKET_NAME = 'dl-temba-io'
+#AWS_BUCKET_DOMAIN = AWS_STORAGE_BUCKET_NAME + '.s3.amazonaws.com'
 
 # keys to access s3
-AWS_ACCESS_KEY_ID = "aws_access_key_id"
-AWS_SECRET_ACCESS_KEY = "aws_secret_access_key"
-
-AWS_DEFAULT_ACL = "private"
+#AWS_ACCESS_KEY_ID = "aws_access_key_id"
+#AWS_SECRET_ACCESS_KEY = "aws_secret_access_key"
+#AWS_DEFAULT_ACL = "private"
 
 # -----------------------------------------------------------------------------------
 # On Unix systems, a value of None will cause Django to use the same
@@ -66,7 +73,7 @@ AWS_DEFAULT_ACL = "private"
 # -----------------------------------------------------------------------------------
 USE_TZ = True
 TIME_ZONE = "GMT"
-USER_TIME_ZONE = "Africa/Kigali"
+USER_TIME_ZONE = "America/Mexico_City"
 
 MODELTRANSLATION_TRANSLATION_REGISTRY = "translation"
 
@@ -80,8 +87,8 @@ LANGUAGE_CODE = "en-us"
 # -----------------------------------------------------------------------------------
 LANGUAGES = (("en-us", _("English")), ("pt-br", _("Portuguese")), ("fr", _("French")), ("es", _("Spanish")))
 
-DEFAULT_LANGUAGE = "en-us"
-DEFAULT_SMS_LANGUAGE = "en-us"
+DEFAULT_LANGUAGE = os.getenv('DEFAULT_LANGUAGE')
+DEFAULT_SMS_LANGUAGE = os.getenv('DEFAULT_LANGUAGE')
 
 SITE_ID = 1
 
@@ -107,7 +114,7 @@ STATICFILES_FINDERS = (
 )
 
 # Make this unique, and don't share it with anybody.
-SECRET_KEY = "your own secret key"
+SECRET_KEY = os.getenv('SECRET_KEY')
 
 EMAIL_CONTEXT_PROCESSORS = ("temba.utils.email.link_components",)
 
@@ -184,6 +191,8 @@ MIDDLEWARE_CLASSES = (
     "temba.middleware.FlowSimulationMiddleware",
     "temba.middleware.ActivateLanguageMiddleware",
     "temba.middleware.OrgHeaderMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
 )
 
 # security middleware configuration
@@ -208,6 +217,8 @@ INSTALLED_APPS = (
     "django.contrib.gis",
     "django.contrib.sitemaps",
     "django.contrib.postgres",
+    #AJAX
+    "corsheaders",
     # Haml-like templates
     "hamlpy",
     # Redis cache
@@ -251,18 +262,47 @@ INSTALLED_APPS = (
 PERMISSIONS_APP = "temba.airtime"
 
 LOGGING = {
-    "version": 1,
-    "disable_existing_loggers": True,
-    "root": {"level": "WARNING", "handlers": ["console"]},
-    "formatters": {"verbose": {"format": "%(levelname)s %(asctime)s %(module)s %(process)d %(thread)d %(message)s"}},
-    "handlers": {
-        "console": {"level": "DEBUG", "class": "logging.StreamHandler", "formatter": "verbose"},
-        "null": {"class": "logging.NullHandler"},
+    'version': 1,
+    'disable_existing_loggers': True,
+    'root': {
+        'level': 'WARNING',
+        'handlers': ['console'],
     },
-    "loggers": {
-        "pycountry": {"level": "ERROR", "handlers": ["console"], "propagate": False},
-        "django.security.DisallowedHost": {"handlers": ["null"], "propagate": False},
-        "django.db.backends": {"level": "ERROR", "handlers": ["console"], "propagate": False},
+    'formatters': {
+        'verbose': {
+            'format': '%(levelname)s %(asctime)s %(module)s %(process)d %(thread)d %(message)s'
+        },
+    },
+    'handlers': {
+        'console': {
+            'level': 'DEBUG',
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose'
+        },
+        'null': {
+            'class': 'logging.NullHandler',
+        },
+    },
+    'loggers': {
+        'pycountry': {
+            'level': 'ERROR',
+            'handlers': ['console'],
+            'propagate': False,
+        },
+        'django.security.DisallowedHost': {
+            'handlers': ['null'],
+            'propagate': False,
+        },
+        'django.db.backends': {
+            'level': 'ERROR',
+            'handlers': ['console'],
+            'propagate': False,
+        },
+        'django.request': {
+            'handlers':['console'],
+            'propagate': True,
+            'level':'DEBUG',
+        }
     },
 }
 
@@ -270,32 +310,32 @@ LOGGING = {
 # Branding Configuration
 # -----------------------------------------------------------------------------------
 BRANDING = {
-    "rapidpro.io": {
-        "slug": "rapidpro",
-        "name": "RapidPro",
-        "org": "UNICEF",
-        "colors": dict(primary="#0c6596"),
-        "styles": ["brands/rapidpro/font/style.css"],
-        "welcome_topup": 1000,
-        "email": "join@rapidpro.io",
-        "support_email": "support@rapidpro.io",
-        "link": "https://app.rapidpro.io",
-        "api_link": "https://api.rapidpro.io",
-        "docs_link": "http://docs.rapidpro.io",
-        "domain": "app.rapidpro.io",
-        "favico": "brands/rapidpro/rapidpro.ico",
-        "splash": "brands/rapidpro/splash.jpg",
-        "logo": "brands/rapidpro/logo.png",
-        "allow_signups": True,
-        "flow_types": ["F", "V", "S", "U"],  # see Flow.FLOW, Flow.VOICE, Flow.SURVEY, Flow.USSD
-        "tiers": dict(import_flows=0, multi_user=0, multi_org=0),
-        "bundles": [],
-        "welcome_packs": [dict(size=5000, name="Demo Account"), dict(size=100000, name="UNICEF Account")],
-        "description": _("Visually build nationally scalable mobile applications from anywhere in the world."),
-        "credits": _("Copyright &copy; 2012-2017 UNICEF, Nyaruka. All Rights Reserved."),
+    'rapidpro.datos.gob.mx': {
+        'slug': 'rapidpro',
+        'name': 'RapidPro',
+        'org': 'UNICEF',
+        'colors': dict(primary='#0c6596'),
+        'styles': ['brands/rapidpro/font/style.css'],
+        'welcome_topup': 1000,
+        'email': 'join@rapidpro.io',
+        'support_email': 'support@rapidpro.io',
+        'link': 'https://rapidpro.datos.gob.mx',
+        'api_link': 'https://rapidpro.datos.gob.mx',
+        'docs_link': 'http://docs.rapidpro.datos.gob.mx',
+        'domain': 'rapidpro.datos.gob.mx',
+        'favico': 'brands/rapidpro/rapidpro.ico',
+        'splash': '/brands/rapidpro/splash.jpg',
+        'logo': '/brands/rapidpro/logo.png',
+        'allow_signups': True,
+        'flow_types': ['F', 'V', 'S', 'U'],  # see Flow.FLOW, Flow.VOICE, Flow.SURVEY, Flow.USSD
+        'tiers': dict(import_flows=0, multi_user=0, multi_org=0),
+        'bundles': [],
+        'welcome_packs': [dict(size=5000, name="Demo Account"), dict(size=100000, name="UNICEF Account")],
+        'description': _("Visually build nationally scalable mobile applications from anywhere in the world."),
+        'credits': _("Copyright &copy; 2012-2017 UNICEF, Nyaruka. All Rights Reserved.")
     }
 }
-DEFAULT_BRAND = "rapidpro.io"
+DEFAULT_BRAND = 'rapidpro.datos.gob.mx'
 
 # -----------------------------------------------------------------------------------
 # Permission Management
@@ -796,20 +836,10 @@ _default_database_config = {
     "OPTIONS": {},
 }
 
-_direct_database_config = _default_database_config.copy()
-_default_database_config["DISABLE_SERVER_SIDE_CURSORS"] = True
-
-DATABASES = {"default": _default_database_config, "direct": _direct_database_config}
-
-# If we are testing, set both our connections as the same, Django seems to get
-# confused on Python 3.6 with transactional tests otherwise
-if TESTING:
-    DATABASES["default"] = _direct_database_config
-
 # -----------------------------------------------------------------------------------
 # Debug Toolbar
 # -----------------------------------------------------------------------------------
-INTERNAL_IPS = iptools.IpRangeList("127.0.0.1", "192.168.0.10", "192.168.0.0/24", "0.0.0.0")  # network block
+INTERNAL_IPS = ('*',)
 
 DEBUG_TOOLBAR_CONFIG = {"INTERCEPT_REDIRECTS": False}  # disable redirect traps
 
@@ -854,9 +884,10 @@ CELERY_TASK_MAP = {
 # -----------------------------------------------------------------------------------
 # Async tasks with celery
 # -----------------------------------------------------------------------------------
-REDIS_HOST =  os.getenv('REDIS_PORT_6379_TCP_ADDR') 
-REDIS_PORT = 6379
 
+
+REDIS_HOST = os.getenv('REDIS_PORT_6379_TCP_ADDR')
+REDIS_PORT = int(os.getenv('REDIS_PORT_6379_TCP_PORT'))
 # we use a redis db of 10 for testing so that we maintain caches for dev
 REDIS_DB = 10 if TESTING else 15
 
@@ -865,12 +896,12 @@ BROKER_URL = "redis://%s:%d/%d" % (REDIS_HOST, REDIS_PORT, REDIS_DB)
 # by default, celery doesn't have any timeout on our redis connections, this fixes that
 BROKER_TRANSPORT_OPTIONS = {"socket_timeout": 5}
 
-CELERY_RESULT_BACKEND = None
+CELERY_RESULT_BACKEND = BROKER_URL
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 
-IS_PROD = False
-HOSTNAME = "localhost"
+IS_PROD = True
+HOSTNAME = "rapidpro.datos.gob.mx"
 
 # The URL and port of the proxy server to use when needed (if any, in requests format)
 OUTGOING_PROXIES = {}
@@ -936,10 +967,8 @@ for brand in BRANDING.values():
     context['brand'] = dict(slug=brand['slug'], styles=brand['styles'])
     COMPRESS_OFFLINE_CONTEXT.append(context)
 
-
-
-MAGE_API_URL = "http://localhost:8026/api/v1"
-MAGE_AUTH_TOKEN = None  # should be same token as configured on Mage side
+MAGE_API_URL = 'http://'+os.getenv('MAGE_IP','localhost')+':8026/api/v1'
+MAGE_AUTH_TOKEN = os.getenv('MAGE_TOKEN',None)  # should be same token as configured on Mage side
 
 # -----------------------------------------------------------------------------------
 # RapidPro configuration settings
@@ -948,22 +977,22 @@ MAGE_AUTH_TOKEN = None  # should be same token as configured on Mage side
 ######
 # DANGER: only turn this on if you know what you are doing!
 #         could cause messages to be sent to live customer aggregators
-SEND_MESSAGES = False
+SEND_MESSAGES = os.getenv('SEND_MESSAGES')
 
 ######
 # DANGER: only turn this on if you know what you are doing!
 #         could cause external APIs to be called in test environment
-SEND_WEBHOOKS = False
+SEND_WEBHOOKS = os.getenv('SEND_WEBHOOKS')
 
 ######
 # DANGER: only turn this on if you know what you are doing!
 #         could cause emails to be sent in test environment
-SEND_EMAILS = False
+SEND_EMAILS = os.getenv('SEND_MAIL')
 
 ######
 # DANGER: only turn this on if you know what you are doing!
 #         could cause airtime transfers in test environment
-SEND_AIRTIME = False
+SEND_AIRTIME = True
 
 ######
 # DANGER: only turn this on if you know what you are doing!
@@ -973,7 +1002,7 @@ SEND_CHATBASE = False
 ######
 # DANGER: only turn this on if you know what you are doing!
 #         could cause calls in test environments
-SEND_CALLS = False
+SEND_CALLS = True
 
 MESSAGE_HANDLERS = [
     "temba.triggers.handlers.TriggerHandler",
@@ -1037,10 +1066,10 @@ SESSION_CACHE_ALIAS = "default"
 # -----------------------------------------------------------------------------------
 # 3rd Party Integration Keys
 # -----------------------------------------------------------------------------------
-TWITTER_API_KEY = os.environ.get("TWITTER_API_KEY", "MISSING_TWITTER_API_KEY")
-TWITTER_API_SECRET = os.environ.get("TWITTER_API_SECRET", "MISSING_TWITTER_API_SECRET")
+TWITTER_API_KEY = os.environ.get('TWITTER_API_KEY', 'MISSING_TWITTER_API_KEY')
+TWITTER_API_SECRET = os.environ.get('TWITTER_API_SECRET', 'MISSING_TWITTER_API_SECRET')
 
-SEGMENT_IO_KEY = os.environ.get("SEGMENT_IO_KEY", "")
+SEGMENT_IO_KEY = os.environ.get('SEGMENT_IO_KEY', '')
 
 INTERCOM_TOKEN = os.environ.get("INTERCOM_TOKEN", "")
 
@@ -1054,7 +1083,7 @@ LIBRATO_TOKEN = os.environ.get("LIBRATO_TOKEN", "")
 #
 # You need to change these to real addresses to work with these.
 # -----------------------------------------------------------------------------------
-IP_ADDRESSES = ("172.16.10.10", "162.16.10.20")
+IP_ADDRESSES = ('172.16.10.10', '162.16.10.20')
 
 # -----------------------------------------------------------------------------------
 # Installs may choose how big they want their text messages and contact fields to be.
@@ -1070,6 +1099,15 @@ FLOWRUN_FIELDS_SIZE = 256
 # -----------------------------------------------------------------------------------
 SUCCESS_LOGS_TRIM_TIME = 48
 ALL_LOGS_TRIM_TIME = 24 * 30
+
+# -----------------------------------------------------------------------------------
+# Ajax
+# -----------------------------------------------------------------------------------
+CORS_ORIGIN_ALLOW_ALL = True
+#CORS_ORIGIN_WHITELIST = (
+#    'localhost:8000',
+#)
+
 
 # -----------------------------------------------------------------------------------
 # Installs can also choose how long to keep EventFires around. By default this is
