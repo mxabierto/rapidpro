@@ -14,7 +14,24 @@ from django.views.generic import RedirectView, View
 from temba.public.models import Lead, Video
 from temba.utils import analytics, get_anonymous_user
 from temba.utils.text import random_string
+from urllib import urlencode
+from django import forms
+from temba.utils.email import send_simple_email
 
+
+###################################################################
+####################     Mx Abierto     ###########################
+###################################################################
+""" Form to send mail of suggestion, use at index template"""
+class SendSuggestionForm(forms.Form):
+    text = forms.CharField(widget=forms.Textarea,required=True, max_length=640)
+
+SUBJECT_SUGGESTION = 'Sugerencia'
+RECIPIENTS_SUGGESTION = 'rapidpromexico@gmail.com'
+
+###################################################################
+#################### Mx Abierto (End)   ###########################
+###################################################################
 
 class IndexView(SmartTemplateView):
     template_name = "public/public_index.haml"
@@ -104,7 +121,9 @@ class VideoCRUDL(SmartCRUDL):
             context["videos"] = Video.objects.exclude(pk=self.get_object().pk).order_by("order")
             return context
 
-
+"""
+View to create new account in public_index (disable)
+but maybe we might need after
 class LeadCRUDL(SmartCRUDL):
     actions = ("create",)
     model = Lead
@@ -137,7 +156,7 @@ class LeadCRUDL(SmartCRUDL):
             obj.created_by = anon
             obj.modified_by = anon
             return obj
-
+"""
 
 class Blog(RedirectView):
     # whitelabels don't have blogs, so we don't use the brand domain here

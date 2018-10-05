@@ -3392,7 +3392,7 @@ msgstr "Activadores de palabras clave globales"
 #: temba/flows/views.py:442 temba/flows/views.py:591
 msgid "When a user sends any of these keywords they will begin this flow"
 msgstr ""
-"Cuando un usuario envía una de estas palabras clave iniciará este flujo"
+"Cuando un usuario envía una de estas palabras clave iniciará este flujo. Para crear un trigger de dos palabras hacerlo desde la pestaña de activadores"
 
 #: temba/flows/views.py:444
 msgid "Run flow over"

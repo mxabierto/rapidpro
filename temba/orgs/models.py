@@ -2118,11 +2118,7 @@ class Org(SmartModel):
         location = public_file_storage.save(path, file)
 
         # force http for localhost
-        scheme = "https"
-        if "localhost" in settings.AWS_BUCKET_DOMAIN:  # pragma: no cover
-            scheme = "http"
-
-        return "%s://%s/%s" % (scheme, settings.AWS_BUCKET_DOMAIN, location)
+        return "http://%s%s%s" % (settings.TEMBA_HOST,settings.MEDIA_URL, location)
 
     def release(self, *, release_users=True, immediately=False):
 

@@ -366,7 +366,7 @@ def reduce_events(events):
 
         # legacy events have absoluute paths for attachments, new have relative
         if "attachments" in new_msg:
-            abs_prefix = f"https://{settings.AWS_BUCKET_DOMAIN}/"
+            abs_prefix = f"https://{settings.TEMBA_HOST+settings.MEDIA_URL}/"
             new_msg["attachments"] = [a.replace(abs_prefix, "") for a in new_msg["attachments"]]
 
         reduced.append(new_event)

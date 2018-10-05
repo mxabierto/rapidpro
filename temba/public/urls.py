@@ -8,7 +8,6 @@ from .views import (
     Deploy,
     GenerateCoupon,
     IndexView,
-    LeadCRUDL,
     LeadViewer,
     OrderStatus,
     VideoCRUDL,
@@ -29,6 +28,5 @@ urlpatterns = [
     url(r"^demo/coupon/$", csrf_exempt(GenerateCoupon.as_view()), {}, "demo.generate_coupon"),
 ]
 
-urlpatterns += LeadCRUDL().as_urlpatterns()
 urlpatterns += LeadViewer().as_urlpatterns()
 urlpatterns += VideoCRUDL().as_urlpatterns()

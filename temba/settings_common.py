@@ -824,16 +824,19 @@ TEST_EXCLUDE = ("smartmin",)
 # -----------------------------------------------------------------------------------
 # Need a PostgreSQL database on localhost with postgis extension installed.
 # -----------------------------------------------------------------------------------
-_default_database_config = {
-    "ENGINE": "django.contrib.gis.db.backends.postgis",
-    "NAME": "temba",
-    "USER": "temba",
-    "PASSWORD": os.getenv('POSTGRES_ENV_TEMBAPASSWD'),
-    "HOST": os.getenv('POSTGRES_PORT_5432_TCP_ADDR'),
-    "PORT": "5432",
-    "ATOMIC_REQUESTS": True,
-    "CONN_MAX_AGE": 60,
-    "OPTIONS": {},
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.contrib.gis.db.backends.postgis',
+        'NAME': 'temba',
+        'USER': 'temba',
+        'PASSWORD': POSTGRES_PASSWORD,
+        'HOST': POSTGRES_HOST,
+        'PORT': POSTGRES_PORT,
+        'ATOMIC_REQUESTS': True,
+        'CONN_MAX_AGE': 60,
+        'OPTIONS': {
+        }
+    }
 }
 
 # -----------------------------------------------------------------------------------
