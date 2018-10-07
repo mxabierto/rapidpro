@@ -3165,9 +3165,9 @@ class FlowRun(RequireUpdateFieldsMixin, models.Model):
 
     current_node_uuid = models.UUIDField(null=True, help_text=_("The current node location of this run in the flow"))
 
-    #delete_reason = models.CharField(
-    #    null=True, max_length=1, choices=DELETE_CHOICES, help_text=_("Why the run is being deleted")
-    #)
+    delete_reason = models.CharField(
+        null=True, max_length=1, choices=DELETE_CHOICES, help_text=_("Why the run is being deleted")
+    )
 
     @classmethod
     def get_active_for_contact(cls, contact):

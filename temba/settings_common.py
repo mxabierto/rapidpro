@@ -324,7 +324,7 @@ BRANDING = {
         'docs_link': 'http://docs.rapidpro.datos.gob.mx',
         'domain': 'rapidpro.datos.gob.mx',
         'favico': 'brands/rapidpro/rapidpro.ico',
-        'splash': '/brands/rapidpro/splash.jpg',
+        'splash': 'sitestatic/brands/rapidpro/splash.jpg',
         'logo': '/brands/rapidpro/logo.png',
         'allow_signups': True,
         'flow_types': ['F', 'V', 'S', 'U'],  # see Flow.FLOW, Flow.VOICE, Flow.SURVEY, Flow.USSD
