@@ -1536,7 +1536,7 @@ class Flow(TembaModel):
                 return None
 
             try:  # pragma: needs cover
-                url = "https://%s/%s" % (settings.AWS_BUCKET_DOMAIN, url)
+                url = "http://%s%s%s" % (settings.TEMBA_HOST,settings.MEDIA_URL, url)
                 temp = NamedTemporaryFile(delete=True)
                 temp.write(urlopen(url).read())
                 temp.flush()
@@ -3165,9 +3165,9 @@ class FlowRun(RequireUpdateFieldsMixin, models.Model):
 
     current_node_uuid = models.UUIDField(null=True, help_text=_("The current node location of this run in the flow"))
 
-    #delete_reason = models.CharField(
-    #    null=True, max_length=1, choices=DELETE_CHOICES, help_text=_("Why the run is being deleted")
-    #)
+    delete_reason = models.CharField(
+        null=True, max_length=1, choices=DELETE_CHOICES, help_text=_("Why the run is being deleted")
+    )
 
     @classmethod
     def get_active_for_contact(cls, contact):
@@ -3603,7 +3603,7 @@ class FlowRun(RequireUpdateFieldsMixin, models.Model):
             media_type, media_url = attachment.split(":", 1)
 
             if not media_url.startswith("http://") and not media_url.startswith("https://"):
-                media_url = "https://%s/%s" % (settings.AWS_BUCKET_DOMAIN, media_url)
+                media_url = "http://%s%s%s" % (settings.TEMBA_HOST,settings.MEDIA_URL, media_url)
 
             attachments.append("%s:%s" % (media_type, media_url))
 
@@ -6455,7 +6455,7 @@ class SayAction(Action):
 
             # if we have a localized recording, create the url
             if recording:  # pragma: needs cover
-                media_url = "https://%s/%s" % (settings.AWS_BUCKET_DOMAIN, recording)
+                media_url = "http://%s%s%s" % (settings.TEMBA_HOST,settings.MEDIA_URL, recording)
 
         # localize the text for our message, need this either way for logging
         message = run.flow.get_localized_text(self.msg, run.contact)
@@ -6595,10 +6595,12 @@ class ReplyAction(Action):
                 media_type, media_url = run.flow.get_localized_text(self.media, run.contact).split(":", 1)
 
                 # if we have a localized media, create the url
-                if media_url and len(media_type.split("/")) > 1:
-                    attachments = ["%s:https://%s/%s" % (media_type, settings.AWS_BUCKET_DOMAIN, media_url)]
-                else:
-                    attachments = ["%s:%s" % (media_type, media_url)]
+                if media_url:
+                    if "https" in media_url or "http"  in media_url :
+                        attachments = ["%s:%s" % (media_type, media_url)]
+                    else:
+                        attachments = ["%s:https://%s%s%s" % (media_type, settings.TEMBA_HOST,settings.MEDIA_URL, media_url)]
+
 
             if offline_on:
                 context = None
@@ -7455,6 +7457,7 @@ class Test(object):
                 OrTest.TYPE: OrTest,
                 PhoneTest.TYPE: PhoneTest,
                 RegexTest.TYPE: RegexTest,
+                EmojiTest.TYPE: EmojiTest,
                 StartsWithTest.TYPE: StartsWithTest,
                 SubflowTest.TYPE: SubflowTest,
                 TimeoutTest.TYPE: TimeoutTest,
@@ -8434,6 +8437,37 @@ class RegexTest(Test):  # pragma: needs cover
 
         return False, None
 
+class EmojiTest(Test):
+    """
+    Test for whether a response contains a phone number
+    """
+    TYPE = 'emoji'
+
+    def __init__(self):
+        pass
+
+    @classmethod
+    def from_json(cls, org, json):
+        return cls()
+
+    def as_json(self):  # pragma: needs cover
+        return dict(type=self.TYPE)
+
+
+    def text_has_emoji(self,complete_text):
+        import emoji
+        for text in complete_text.split():
+            for character in text:
+                if character in emoji.UNICODE_EMOJI:
+                    return True
+        return False
+
+
+    def evaluate(self, run, sms, context, text):
+        text = text.replace(',', '')
+        if self.text_has_emoji(text):
+            return 1, text
+        return 0, None
 
 class InterruptTest(Test):
     """

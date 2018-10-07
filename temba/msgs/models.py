@@ -477,8 +477,8 @@ class Broadcast(models.Model):
                 media_type, media_url = media.split(":", 1)
                 # arbitrary media urls don't have a full content type, so only
                 # make uploads into fully qualified urls
-                if media_url and len(media_type.split("/")) > 1:
-                    media = "%s:https://%s/%s" % (media_type, settings.AWS_BUCKET_DOMAIN, media_url)
+                if media_url:
+                    media = "%s:https://%s%s%s" % (media_type, settings.TEMBA_HOST,settings.MEDIA_URL, media_url)
 
             # build our message specific context
             if expressions_context is not None:
