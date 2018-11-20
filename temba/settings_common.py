@@ -257,6 +257,7 @@ INSTALLED_APPS = (
     "temba.locations",
     "temba.values",
     "temba.airtime",
+    "temba.notifications",
 )
 
 # the last installed app that uses smartmin permissions
@@ -858,6 +859,8 @@ CELERYBEAT_SCHEDULE = {
     "refresh-jiochat-access-tokens": {"task": "refresh_jiochat_access_tokens", "schedule": timedelta(seconds=3600)},
     "refresh-wechat-access-tokens": {"task": "refresh_wechat_access_tokens", "schedule": timedelta(seconds=3600)},
     "refresh-whatsapp-tokens": {"task": "refresh_whatsapp_tokens", "schedule": timedelta(hours=24)},
+    "notifications_archive": {"task": "notification_archive_changes", "schedule": timedelta(seconds=60)},
+    "notifications_changes": {"task": "notification_migrate_changes", "schedule": timedelta(seconds=60)},
 }
 
 # Mapping of task name to task function path, used when CELERY_ALWAYS_EAGER is set to True
@@ -1132,4 +1135,3 @@ MACHINE_HOSTNAME = socket.gethostname().split(".")[0]
 # ElasticSearch configuration (URL RFC-1738)
 ELASTICSEARCH_IP = os.environ.get("ELASTICSEARCH_PORT_9200_TCP_ADDR", "localhost")
 ELASTICSEARCH_URL = "http://{ip}:9200".format(ip = ELASTICSEARCH_IP)
-

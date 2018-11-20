@@ -231,7 +231,51 @@ class Campaign(TembaModel):
     def __str__(self):
         return self.name
 
+    # BEGIN MX abierto change
+    @classmethod
+    def apply_action_send_notification(cls, user, campaigns):
+        from temba.notifications.models import Notification
+        changed = []
+        e_string = "{r}|{o}|{a}"
+        user_org = user.get_org()
+        if not user_org.parent:
+            return changed
+        for campaign in campaigns:
 
+            events = campaign.events.filter(is_active=True)
+            old_campaign = Campaign.objects.filter(org = user_org.parent,
+                                                   name = campaign.name).first()
+            serialized_new = [e_string.format(r = e.relative_to.label,
+                                              o = str(e.offset)+e.unit,
+                                              a = str(e.message)+ str(e.flow))
+                              for e in events]
+            changes = {"deleted":["New Campaign"], "added":serialized_new}
+            if old_campaign:
+                old_events = old_campaign.events.filter(is_active=True)
+                old_events_l = [e.get_history() for e in old_events]
+                serialized_old = [e_string.format(r = e.relative_to.label,
+                                                  o = str(e.offset)+e.unit,
+                                                  a = str(e.message)+ str(e.flow))
+                                  for e in old_events]
+                old_events_l = set(serialized_old)
+                new_events_l = set(serialized_new)
+                deleted = old_events_l - new_events_l
+                added = new_events_l - old_events_l
+                changes = {"deleted":list(deleted), "added":list(added)}
+            Notification.create_from_staging(user=user,
+                                            org_orig=user_org,
+                                            org_dest=user_org.parent,
+                                            item_type = Notification.CAMPAIGN_TYPE,
+                                            item_id = campaign.id,
+                                            item_name = campaign.name,
+                                            history=campaign.as_json(),
+                                            auto_migrated=user_org.apply_notification,
+                                            history_dump = json.dumps(changes))
+
+            changed.append(campaign.pk)
+        return changed
+
+    # END MX abierto change
 class CampaignEvent(TembaModel):
     """
     An event within a campaign that can send a message to a contact or start them in a flow
@@ -462,6 +506,26 @@ class CampaignEvent(TembaModel):
 
     def __str__(self):
         return "%s == %d -> %s" % (self.relative_to, self.offset, self.flow)
+
+    def get_history(self):
+        history = dict(
+        name = self.campaign.name,
+        uuid = self.campaign.uuid,
+        group = dict(uuid = self.campaign.group.uuid,
+                     name = self.campaign.group.name),
+        events = [dict(uuid = self.uuid,
+                       offset = self.offset,
+                       unit = self.unit,
+                       event_type = self.event_type,
+                       delivery_hour = self.delivery_hour,
+                       message = self.message,
+                       relative_to = dict(label = self.relative_to.label,
+                                          key = self.relative_to.key),
+                       flow = dict(uuid = self.flow.uuid,
+                                   name = self.flow.name)
+                )],
+        )
+        return json.dumps(history)
 
 
 class EventFire(Model):

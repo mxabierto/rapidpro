@@ -1,4 +1,5 @@
 import regex
+import json
 from smartmin.models import SmartModel
 from temba_expressions.utils import tokenize
 
@@ -494,6 +495,58 @@ class Trigger(SmartModel):
                 trigger_scopes = trigger_scopes | trigger_scope
 
         return [t.pk for t in triggers]
+    # BEGIN MX abierto change
+    @classmethod
+    def apply_action_send_notification(cls, user, triggers):
+        from temba.notifications.models import Notification
+        import json
+        changed = []
+        trigger_string = "{k}|{t}|{f}|{g}"
+        for trigger in triggers:
+            #Now search on parent
+            user_org = user.get_org()
+            if user_org.parent:
+                production_t = Trigger.objects.filter(
+                                    org=user_org.parent,
+                                    keyword = trigger.keyword,
+                                    trigger_type = trigger.trigger_type
+                                ).first()
+                changes = {
+                    "added":[trigger_string.format(
+                        k=trigger.keyword,
+                        t=trigger.trigger_type,
+                        f=trigger.flow.name,
+                        g=",".join([g.name for g in trigger.groups.all()])
+                    )],
+                    "deleted":[] }
+                if production_t:
+                    new_groups = [g.name for g in trigger.groups.all()]
+                    old_groups = [g.name for g in production_t.groups.all()]
+                    groups = set(new_groups)-set(old_groups)
+                    if (production_t.flow.name != trigger.flow.name) or \
+                       groups:
+                        changes["deleted"]=[trigger_string.format(
+                            k=production_t.keyword,
+                            t=production_t.trigger_type,
+                            f=production_t.flow.name,
+                            g=",".join([g.name for g in production_t.groups.all()])
+                        )]
+                    else:
+                        changes = {"added":[],"deleted":[]}
+            Notification.create_from_staging(
+                user=user,
+                org_orig=user_org,
+                org_dest=user_org.parent,
+                item_type = Notification.TRIGGER_TYPE,
+                item_id = trigger.id,
+                item_name = trigger.keyword,
+                history=trigger.as_json(),
+                auto_migrated=user_org.apply_notification,
+                history_dump = json.dumps(changes))
+            changed.append(trigger.pk)
+        return changed
+
+    # END MX abierto change
 
     def release(self):
         """
