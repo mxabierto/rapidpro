@@ -21,9 +21,10 @@ class Notification(SmartModel):
     """
 
     org_dest = models.ForeignKey(Org, verbose_name="Org_destine", related_name="org_dest",
+                                    on_delete=models.PROTECT,
                                     help_text="The destination organization")
     org_orig = models.ForeignKey(Org, verbose_name="Org_origin", null=True, related_name="org_origin",
-                                    blank=True, on_delete=models.SET_NULL,
+                                    blank=True, on_delete=models.PROTECT,
                                     help_text="The origin organization")
     note_orig = models.CharField(verbose_name="Note origin", max_length=250,
                                     null=True, blank=True,

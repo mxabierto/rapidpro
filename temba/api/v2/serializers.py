@@ -1,6 +1,5 @@
-import json
-
 import iso8601
+import pytz
 from rest_framework import serializers
 
 from temba.api.models import Resthook, ResthookSubscriber, WebHookEvent
@@ -12,8 +11,7 @@ from temba.flows.models import Flow, FlowRun, FlowStart
 from temba.locations.models import AdminBoundary
 from temba.msgs.models import PENDING, QUEUED, Broadcast, Label, Msg
 from temba.msgs.tasks import send_broadcast_task
-from temba.utils import extract_constants, on_transaction_commit
-from temba.utils.dates import datetime_to_json_date
+from temba.utils import extract_constants, json, on_transaction_commit
 from temba.values.constants import Value
 
 from . import fields
@@ -24,7 +22,7 @@ def format_datetime(value):
     """
     Datetime fields are formatted with microsecond accuracy for v2
     """
-    return datetime_to_json_date(value, micros=True) if value else None
+    return json.encode_datetime(value, micros=True) if value else None
 
 
 class ReadSerializer(serializers.ModelSerializer):
@@ -110,6 +108,7 @@ class BroadcastReadSerializer(ReadSerializer):
     urns = serializers.SerializerMethodField()
     contacts = fields.ContactField(many=True)
     groups = fields.ContactGroupField(many=True)
+    created_on = serializers.DateTimeField(default_timezone=pytz.UTC)
 
     def get_urns(self, obj):
         if self.context["org"].is_anon:
@@ -172,6 +171,8 @@ class ChannelEventReadSerializer(ReadSerializer):
     contact = fields.ContactField()
     channel = fields.ChannelField()
     extra = serializers.SerializerMethodField()
+    created_on = serializers.DateTimeField(default_timezone=pytz.UTC)
+    occurred_on = serializers.DateTimeField(default_timezone=pytz.UTC)
 
     def get_type(self, obj):
         return self.TYPES.get(obj.event_type)
@@ -187,6 +188,7 @@ class ChannelEventReadSerializer(ReadSerializer):
 class CampaignReadSerializer(ReadSerializer):
     archived = serializers.ReadOnlyField(source="is_archived")
     group = fields.ContactGroupField()
+    created_on = serializers.DateTimeField(default_timezone=pytz.UTC)
 
     class Meta:
         model = Campaign
@@ -225,6 +227,7 @@ class CampaignEventReadSerializer(ReadSerializer):
     flow = serializers.SerializerMethodField()
     relative_to = fields.ContactFieldField()
     unit = serializers.SerializerMethodField()
+    created_on = serializers.DateTimeField(default_timezone=pytz.UTC)
 
     def get_flow(self, obj):
         if obj.event_type == CampaignEvent.TYPE_FLOW:
@@ -352,6 +355,8 @@ class CampaignEventWriteSerializer(WriteSerializer):
 class ChannelReadSerializer(ReadSerializer):
     country = serializers.SerializerMethodField()
     device = serializers.SerializerMethodField()
+    created_on = serializers.DateTimeField(default_timezone=pytz.UTC)
+    last_seen = serializers.DateTimeField(default_timezone=pytz.UTC)
 
     def get_country(self, obj):
         return str(obj.country) if obj.country else None
@@ -381,6 +386,8 @@ class ContactReadSerializer(ReadSerializer):
     fields = serializers.SerializerMethodField("get_contact_fields")
     blocked = serializers.SerializerMethodField()
     stopped = serializers.SerializerMethodField()
+    created_on = serializers.DateTimeField(default_timezone=pytz.UTC)
+    modified_on = serializers.DateTimeField(default_timezone=pytz.UTC)
 
     def get_name(self, obj):
         return obj.name if obj.is_active else None
@@ -478,6 +485,9 @@ class ContactWriteSerializer(WriteSerializer):
         return value
 
     def validate(self, data):
+        if self.instance and not self.instance.is_active:
+            raise serializers.ValidationError("Inactive contacts can't be modified.")
+
         # we allow creation of contacts by URN used for lookup
         if not data.get("urns") and "urns__identity" in self.context["lookup_values"]:
             url_urn = self.context["lookup_values"]["urns__identity"]
@@ -507,11 +517,12 @@ class ContactWriteSerializer(WriteSerializer):
                 self.instance.language = language
                 changed.append("language")
 
+            if changed:
+                self.instance.save(update_fields=changed, handle_update=True)
+
             if "urns" in self.validated_data and urns is not None:
                 self.instance.update_urns(self.context["user"], urns)
 
-            if changed:
-                self.instance.save(update_fields=changed)
         else:
             self.instance = Contact.get_or_create_by_urns(
                 self.context["org"], self.context["user"], name, urns=urns, language=language
@@ -519,8 +530,7 @@ class ContactWriteSerializer(WriteSerializer):
 
         # update our fields
         if custom_fields is not None:
-            for key, value in custom_fields.items():
-                self.instance.set_field(self.context["user"], key, value)
+            self.instance.set_fields(user=self.context["user"], fields=custom_fields)
 
         # update our groups
         if groups is not None:
@@ -548,7 +558,7 @@ class ContactFieldWriteSerializer(WriteSerializer):
     label = serializers.CharField(
         required=True,
         max_length=ContactField.MAX_LABEL_LEN,
-        validators=[UniqueForOrgValidator(ContactField.objects.filter(is_active=True), ignore_case=True)],
+        validators=[UniqueForOrgValidator(ContactField.user_fields.filter(is_active=True), ignore_case=True)],
     )
     value_type = serializers.ChoiceField(required=True, choices=list(VALUE_TYPES.keys()))
 
@@ -567,7 +577,7 @@ class ContactFieldWriteSerializer(WriteSerializer):
 
     def validate(self, data):
 
-        fields_count = ContactField.objects.filter(org=self.context["org"]).count()
+        fields_count = ContactField.user_fields.filter(org=self.context["org"]).count()
         if not self.instance and fields_count >= ContactField.MAX_ORG_CONTACTFIELDS:
             raise serializers.ValidationError(
                 "This org has %s contact fields and the limit is %s. "
@@ -705,6 +715,8 @@ class FlowReadSerializer(ReadSerializer):
     labels = serializers.SerializerMethodField()
     expires = serializers.ReadOnlyField(source="expires_after_minutes")
     runs = serializers.SerializerMethodField()
+    created_on = serializers.DateTimeField(default_timezone=pytz.UTC)
+    modified_on = serializers.DateTimeField(default_timezone=pytz.UTC)
 
     def get_labels(self, obj):
         return [{"uuid": l.uuid, "name": l.name} for l in obj.labels.all()]
@@ -736,6 +748,9 @@ class FlowRunReadSerializer(ReadSerializer):
     path = serializers.SerializerMethodField()
     values = serializers.SerializerMethodField()
     exit_type = serializers.SerializerMethodField()
+    created_on = serializers.DateTimeField(default_timezone=pytz.UTC)
+    modified_on = serializers.DateTimeField(default_timezone=pytz.UTC)
+    exited_on = serializers.DateTimeField(default_timezone=pytz.UTC)
 
     def get_start(self, obj):
         return {"uuid": str(obj.start.uuid)} if obj.start else None
@@ -795,6 +810,8 @@ class FlowStartReadSerializer(ReadSerializer):
     groups = fields.ContactGroupField(many=True)
     contacts = fields.ContactField(many=True)
     extra = serializers.JSONField(required=False)
+    created_on = serializers.DateTimeField(default_timezone=pytz.UTC)
+    modified_on = serializers.DateTimeField(default_timezone=pytz.UTC)
 
     def get_status(self, obj):
         return FlowStartReadSerializer.STATUSES.get(obj.status)
@@ -919,6 +936,9 @@ class MsgReadSerializer(ReadSerializer):
     visibility = serializers.SerializerMethodField()
     labels = fields.LabelField(many=True)
     media = serializers.SerializerMethodField()  # deprecated
+    created_on = serializers.DateTimeField(default_timezone=pytz.UTC)
+    modified_on = serializers.DateTimeField(default_timezone=pytz.UTC)
+    sent_on = serializers.DateTimeField(default_timezone=pytz.UTC)
 
     def get_broadcast(self, obj):
         return obj.broadcast_id
@@ -1039,6 +1059,8 @@ class MsgBulkActionSerializer(WriteSerializer):
 
 class ResthookReadSerializer(ReadSerializer):
     resthook = serializers.SerializerMethodField()
+    created_on = serializers.DateTimeField(default_timezone=pytz.UTC)
+    modified_on = serializers.DateTimeField(default_timezone=pytz.UTC)
 
     def get_resthook(self, obj):
         return obj.slug
@@ -1050,6 +1072,7 @@ class ResthookReadSerializer(ReadSerializer):
 
 class ResthookSubscriberReadSerializer(ReadSerializer):
     resthook = serializers.SerializerMethodField()
+    created_on = serializers.DateTimeField(default_timezone=pytz.UTC)
 
     def get_resthook(self, obj):
         return obj.resthook.slug
@@ -1090,6 +1113,7 @@ class ResthookSubscriberWriteSerializer(WriteSerializer):
 class WebHookEventReadSerializer(ReadSerializer):
     resthook = serializers.SerializerMethodField()
     data = serializers.SerializerMethodField()
+    created_on = serializers.DateTimeField(default_timezone=pytz.UTC)
 
     def get_resthook(self, obj):
         return obj.resthook.slug

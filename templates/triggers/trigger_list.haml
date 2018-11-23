@@ -3,7 +3,7 @@
 -load i18n
 -block page-title
   -trans "Triggers"
-
+  
 -block title-icon
   .title-icon
     %span.glyph.icon-feed
@@ -125,19 +125,6 @@
                             - else
                               -trans "inbound call"
 
-                        -elif obj.trigger_type == 'F'
-                          A new
-                          %span.attn{style:"{% if not org_perms.triggers.trigger_update %}font-weight:bold;{% endif %}"}
-                            - if org_perms.triggers.trigger_update
-                              %a.update-trigger{data-object-id:"{{ obj.id }}", href:"#"}><
-                                -trans "follow"
-                            - else
-                              -trans "follow"
-                          -if obj.channel
-                            on
-                            %span.attn
-                              %a{href:'{%url "channels.channel_read" obj.channel.uuid %}'}= obj.channel
-
                         -elif obj.trigger_type == 'N'
                           A new
                           %span.attn{style:"{% if not org_perms.triggers.trigger_update %}font-weight:bold;{% endif %}"}
@@ -242,3 +229,4 @@
        modal.setRedirectOnSuccess(true);
        modal.show();
     });
+    

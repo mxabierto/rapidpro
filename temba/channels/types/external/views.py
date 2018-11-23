@@ -56,9 +56,9 @@ class ClaimView(ClaimViewMixin, SmartFormView):
         )
 
         encoding = forms.ChoiceField(
-            Channel.ENCODING_CHOICES,
+            choices=Channel.ENCODING_CHOICES,
             label=_("Encoding"),
-            help_text=_("What encoding to use for outgoing messages, used only for HTTP GET"),
+            help_text=_("What encoding to use for outgoing messages"),
         )
 
         content_type = forms.ChoiceField(
@@ -100,9 +100,9 @@ class ClaimView(ClaimViewMixin, SmartFormView):
         )
 
         encoding = forms.ChoiceField(
-            Channel.ENCODING_CHOICES,
+            choices=Channel.ENCODING_CHOICES,
             label=_("Encoding"),
-            help_text=_("What encoding to use for outgoing messages, used only for HTTP GET"),
+            help_text=_("What encoding to use for outgoing messages"),
         )
 
     title = "Connect External Service"

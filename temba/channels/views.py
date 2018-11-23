@@ -1,7 +1,6 @@
 import base64
 import hashlib
 import hmac
-import json
 import time
 from collections import defaultdict
 from datetime import datetime, timedelta
@@ -20,15 +19,15 @@ from smartmin.views import (
     SmartTemplateView,
     SmartUpdateView,
 )
-from twilio import TwilioRestException
+from twilio.base.exceptions import TwilioException, TwilioRestException
 
 from django import forms
 from django.conf import settings
 from django.contrib import messages
 from django.core.exceptions import ValidationError
-from django.core.urlresolvers import reverse
 from django.db.models import Count, Sum
 from django.http import Http404, HttpResponse, HttpResponseRedirect, JsonResponse
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.encoding import force_bytes, force_text
 from django.utils.http import urlencode
@@ -41,7 +40,7 @@ from temba.msgs.models import OUTGOING, PENDING, QUEUED, WIRED, Msg, SystemLabel
 from temba.msgs.views import InboxView
 from temba.orgs.models import Org
 from temba.orgs.views import AnonMixin, ModalMixin, OrgObjPermsMixin, OrgPermsMixin
-from temba.utils import analytics
+from temba.utils import analytics, json
 from temba.utils.http import http_headers
 
 from .models import Alert, Channel, ChannelCount, ChannelEvent, ChannelLog, SyncEvent
@@ -487,7 +486,7 @@ def channel_status_processor(request):
     status = dict()
     user = request.user
 
-    if user.is_superuser or user.is_anonymous():
+    if user.is_superuser or user.is_anonymous:
         return status
 
     # from the logged in user get the channel
@@ -1734,7 +1733,7 @@ class ChannelCRUDL(SmartCRUDL):
             user = self.request.user
             org = None
 
-            if not user.is_anonymous():
+            if not user.is_anonymous:
                 org = user.get_org()
 
             org_id = self.request.session.get("org_id", None)
@@ -1798,16 +1797,22 @@ class ChannelCRUDL(SmartCRUDL):
         def search_available_numbers(self, client, **kwargs):
             available_numbers = []
 
-            kwargs["type"] = "local"
+            country = kwargs["country"]
+            del kwargs["country"]
+
             try:
-                available_numbers += client.phone_numbers.search(**kwargs)
-            except TwilioRestException:  # pragma: no cover
+                available_numbers += client.api.available_phone_numbers(country).local.list(**kwargs)
+            except TwilioException:  # pragma: no cover
                 pass
 
-            kwargs["type"] = "mobile"
             try:
-                available_numbers += client.phone_numbers.search(**kwargs)
-            except TwilioRestException:  # pragma: no cover
+                available_numbers += client.api.available_phone_numbers(country).mobile.list(**kwargs)
+            except TwilioException:  # pragma: no cover
+                pass
+
+            try:
+                available_numbers += client.api.available_phone_numbers(country).toll_free.list(**kwargs)
+            except TwilioException:  # pragma: no cover
                 pass
 
             return available_numbers

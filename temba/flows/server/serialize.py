@@ -10,6 +10,10 @@ VALUE_TYPE_NAMES = {c[0]: c[2] for c in Value.TYPE_CONFIG}
 VALUE_TYPE_NAMES["N"] = "number"
 
 
+def serialize_ref(obj):
+    return {"uuid": str(obj.uuid), "name": obj.name or ""}
+
+
 def serialize_flow(flow):
     """
     Migrates the given flow, returning None if the flow or any of its dependencies can't be run in
@@ -20,13 +24,13 @@ def serialize_flow(flow):
     flow.ensure_current_version()
     flow_def = flow.as_json(expand_contacts=True)
 
-    return get_client().migrate({"flows": [flow_def]})[0]
+    return get_client().migrate({"flow": flow_def, "collapse_exits": False})
 
 
 def serialize_channel(channel):
     from temba.channels.models import Channel
 
-    return {
+    serialized = {
         "uuid": str(channel.uuid),
         "name": channel.name or "",
         "address": channel.address,
@@ -34,9 +38,17 @@ def serialize_channel(channel):
         "roles": [Channel.ROLE_CONFIG[r] for r in channel.role],
     }
 
+    if channel.parent_id:
+        serialized["parent"] = serialize_ref(channel.parent)
+    if channel.country:
+        serialized["country"] = channel.country.code
 
-def serialize_channel_ref(channel):
-    return {"uuid": str(channel.uuid), "name": channel.name or ""}
+    config = channel.config or {}
+    match_prefixes = config.get(Channel.CONFIG_SHORTCODE_MATCHING_PREFIXES, [])
+    if match_prefixes:
+        serialized["match_prefixes"] = match_prefixes
+
+    return serialized
 
 
 def serialize_contact(contact):
@@ -49,11 +61,10 @@ def serialize_contact(contact):
     # augment URN values with preferred channel UUID as a parameter
     urn_values = []
     for u in contact.urns.order_by("-priority", "id"):
-        # for each URN we resolve the preferred channel and include that as a query param
-        channel = contact.org.get_send_channel(contact_urn=u)
-        if channel:
+        # for each URN we include the preferred channel as a query param if there is one
+        if u.channel and u.channel.is_active:
             scheme, path, query, display = URN.to_parts(u.urn)
-            urn_str = URN.from_parts(scheme, path, query=urlencode({"channel": str(channel.uuid)}), display=display)
+            urn_str = URN.from_parts(scheme, path, query=urlencode({"channel": str(u.channel.uuid)}), display=display)
         else:
             urn_str = u.urn
 
@@ -64,9 +75,8 @@ def serialize_contact(contact):
         "id": contact.id,
         "name": contact.name,
         "language": contact.language,
-        "timezone": "UTC",
         "urns": urn_values,
-        "groups": [serialize_group_ref(group) for group in contact.user_groups.filter(is_active=True)],
+        "groups": [serialize_ref(group) for group in contact.user_groups.filter(is_active=True)],
         "fields": field_values,
     }
 
@@ -91,10 +101,6 @@ def serialize_group(group):
     return {"uuid": str(group.uuid), "name": group.name, "query": group.query}
 
 
-def serialize_group_ref(group):
-    return {"uuid": str(group.uuid), "name": group.name}
-
-
 def serialize_label(label):
     return {"uuid": str(label.uuid), "name": label.name}
 
@@ -103,7 +109,7 @@ def serialize_language(language):
     return {"iso": language.iso_code, "name": language.name}
 
 
-def serialize_location_hierarchy(country, aliases_from_org=None):
+def serialize_location_hierarchy(org):
     """
     Serializes a country as a location hierarchy, e.g.
     {
@@ -119,20 +125,18 @@ def serialize_location_hierarchy(country, aliases_from_org=None):
         ]
     }
     """
-    queryset = country.get_descendants(include_self=True)
+    from temba.locations.models import BoundaryAlias
 
-    if aliases_from_org:
-        from temba.locations.models import BoundaryAlias
-
-        queryset = queryset.prefetch_related(
-            Prefetch("aliases", queryset=BoundaryAlias.objects.filter(org=aliases_from_org))
-        )
+    queryset = org.country.get_descendants(include_self=True).prefetch_related(
+        Prefetch("aliases", queryset=BoundaryAlias.objects.filter(org=org))
+    )
 
     def _serialize_node(node):
         rendered = {"name": node.name}
 
-        if aliases_from_org:
-            rendered["aliases"] = [a.name for a in node.aliases.all()]
+        aliases = [a.name for a in node.aliases.all()]
+        if aliases:
+            rendered["aliases"] = aliases
 
         children = node.get_children()
         if children:
@@ -150,7 +154,7 @@ def serialize_message(msg):
     if msg.contact_urn_id:
         serialized["urn"] = msg.contact_urn.urn
     if msg.channel_id:
-        serialized["channel"] = serialize_channel_ref(msg.channel)
+        serialized["channel"] = serialize_ref(msg.channel)
     if msg.attachments:
         serialized["attachments"] = msg.attachments
 

@@ -13,7 +13,7 @@ from celery.schedules import crontab
 # -----------------------------------------------------------------------------------
 # Default to debugging
 # -----------------------------------------------------------------------------------
-DEBUG = False
+DEBUG = True
 ALLOWED_HOSTS=['*']
 
 # -----------------------------------------------------------------------------------
@@ -57,9 +57,9 @@ FLOW_FROM_EMAIL = "no-reply@temba.io"
 OUTGOING_REQUEST_HEADERS = {"User-agent": "RapidPro"}
 
 # where recordings and exports are stored
-AWS_STORAGE_BUCKET_NAME = "dl-temba-io"
-AWS_BUCKET_DOMAIN = AWS_STORAGE_BUCKET_NAME + ".s3.amazonaws.com"
-STORAGE_ROOT_DIR = "test_orgs" if TESTING else "orgs"
+#AWS_STORAGE_BUCKET_NAME = "dl-temba-io"
+#AWS_BUCKET_DOMAIN = AWS_STORAGE_BUCKET_NAME + ".s3.amazonaws.com"
+#STORAGE_ROOT_DIR = "test_orgs" if TESTING else "orgs"
 
 # keys to access s3
 #AWS_ACCESS_KEY_ID = "aws_access_key_id"
@@ -168,7 +168,6 @@ TEMPLATES = [
                 "temba.utils.haml.HamlAppDirectoriesLoader",
                 "django.template.loaders.filesystem.Loader",
                 "django.template.loaders.app_directories.Loader",
-                "django.template.loaders.eggs.Loader",
             ],
             "debug": False if TESTING else DEBUG,
         },
@@ -178,7 +177,7 @@ TEMPLATES = [
 if TESTING:
     TEMPLATES[0]["OPTIONS"]["context_processors"] += ("temba.tests.add_testing_flag_to_context",)
 
-MIDDLEWARE_CLASSES = (
+MIDDLEWARE = (
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -329,7 +328,7 @@ BRANDING = {
         "splash": "sitestatic/brands/rapidpro/splash.jpg",
         "logo": "brands/rapidpro/logo.png",
         "allow_signups": True,
-        "flow_types": ["F", "V", "S", "U"],  # see Flow.FLOW, Flow.VOICE, Flow.SURVEY, Flow.USSD
+        "flow_types": ["M", "V", "S", "U"],  # see Flow.TYPE_MESSAGE, Flow.TYPE_VOICE, Flow.TYPE_SURVEY, Flow.TYPE_USSD
         "tiers": dict(import_flows=0, multi_user=0, multi_org=0),
         "bundles": [],
         "welcome_packs": [dict(size=5000, name="Demo Account"), dict(size=100000, name="UNICEF Account")],
@@ -337,7 +336,7 @@ BRANDING = {
         "credits": _("Copyright &copy; 2012-2017 UNICEF, Nyaruka. All Rights Reserved."),
     }
 }
-DEFAULT_BRAND = 'rapidpro.datos.gob.mx'
+DEFAULT_BRAND = "rapidpro.datos.gob.mx"
 
 # -----------------------------------------------------------------------------------
 # Permission Management
@@ -925,9 +924,11 @@ REST_FRAMEWORK = {
         "v2.api": "2500/hour",
     },
     "PAGE_SIZE": 250,
+    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.LimitOffsetPagination",
     "DEFAULT_RENDERER_CLASSES": ("temba.api.support.DocumentationRenderer", "rest_framework.renderers.JSONRenderer"),
     "EXCEPTION_HANDLER": "temba.api.support.temba_exception_handler",
     "UNICODE_JSON": False,
+    "STRICT_JSON": False,
 }
 REST_HANDLE_EXCEPTIONS = not TESTING
 
@@ -952,8 +953,8 @@ COMPRESS_URL = STATIC_URL
 # build up our offline compression context based on available brands
 COMPRESS_OFFLINE_CONTEXT = []
 for brand in BRANDING.values():
-    context = dict(STATIC_URL=STATIC_URL, base_template='frame.html', debug=False, testing=False)
-    context['brand'] = dict(slug=brand['slug'], styles=brand['styles'])
+    context = dict(STATIC_URL=STATIC_URL, base_template="frame.html", debug=False, testing=False)
+    context["brand"] = dict(slug=brand["slug"], styles=brand["styles"])
     COMPRESS_OFFLINE_CONTEXT.append(context)
 
 MAGE_API_URL = 'http://'+os.getenv('MAGE_IP','localhost')+':8026/api/v1'

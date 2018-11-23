@@ -1,4 +1,3 @@
-import json
 from datetime import timedelta
 
 from django.db import models
@@ -10,8 +9,9 @@ from temba.contacts.models import Contact, ContactField, ContactGroup
 from temba.flows.models import Flow, FlowStart
 from temba.msgs.models import Msg
 from temba.orgs.models import Org
-from temba.utils import on_transaction_commit
+from temba.utils import json, on_transaction_commit
 from temba.utils.models import TembaModel, TranslatableField
+from temba.values.constants import Value
 
 
 class Campaign(TembaModel):
@@ -223,7 +223,7 @@ class Campaign(TembaModel):
         events = list(self.events.filter(is_active=True))
 
         for evt in events:
-            if evt.flow.flow_type == Flow.MESSAGE:
+            if evt.flow.is_system:
                 evt.flow.ensure_current_version()
 
         return sorted(events, key=lambda e: e.relative_to.pk * 100000 + e.minute_offset())
@@ -336,8 +336,13 @@ class CampaignEvent(TembaModel):
     def create_message_event(
         cls, org, user, campaign, relative_to, offset, unit, message, delivery_hour=-1, base_language=None
     ):
-        if campaign.org != org:  # pragma: no cover
+        if campaign.org != org:
             raise ValueError("Org mismatch")
+
+        if relative_to.value_type != Value.TYPE_DATETIME:
+            raise ValueError(
+                f"Contact fields for CampaignEvents must have a datetime type, got {relative_to.value_type}."
+            )
 
         if isinstance(message, str):
             base_language = org.primary_language.iso_code if org.primary_language else "base"
@@ -360,8 +365,13 @@ class CampaignEvent(TembaModel):
 
     @classmethod
     def create_flow_event(cls, org, user, campaign, relative_to, offset, unit, flow, delivery_hour=-1):
-        if campaign.org != org:  # pragma: no cover
+        if campaign.org != org:
             raise ValueError("Org mismatch")
+
+        if relative_to.value_type != Value.TYPE_DATETIME:
+            raise ValueError(
+                f"Contact fields for CampaignEvents must have a datetime type, got '{relative_to.value_type}'."
+            )
 
         return cls.objects.create(
             campaign=campaign,
@@ -495,9 +505,16 @@ class CampaignEvent(TembaModel):
         # delete any event fires
         self.event_fires.all().delete()
 
-        # if our flow is a single message flow, release that too
-        if self.flow.flow_type == Flow.MESSAGE:
+        # if flow isn't a user created flow we can delete it too
+        if self.flow.is_system:
+
+            # delete any associated flow starts
+            self.flow_starts.all().delete()
+
             self.flow.release()
+        else:
+            # detach any associated flow starts
+            self.flow_starts.all().update(campaign_event=None)
 
         self.delete()
 
@@ -574,11 +591,12 @@ class EventFire(Model):
         """
         fired = timezone.now()
         contacts = [f.contact for f in fires]
+        event = fires[0].event
 
         if len(contacts) == 1:
-            flow.start([], contacts, restart_participants=True)
+            flow.start([], contacts, restart_participants=True, campaign_event=event)
         else:
-            start = FlowStart.create(flow, flow.created_by, contacts=contacts)
+            start = FlowStart.create(flow, flow.created_by, contacts=contacts, campaign_event=event)
             start.async_start()
         EventFire.objects.filter(id__in=[f.id for f in fires]).update(fired=fired)
 
@@ -611,15 +629,22 @@ class EventFire(Model):
         # add new ones if this event exists and the campaign is active
         if event.is_active and not event.campaign.is_archived:
             field = event.relative_to
-            field_uuid = str(field.uuid)
 
-            contacts = (
-                event.campaign.group.contacts.filter(is_active=True, is_blocked=False)
-                .exclude(is_test=True)
-                .extra(
-                    where=['%s::text[] <@ (extract_jsonb_keys("contacts_contact"."fields"))'], params=[[field_uuid]]
+            if field.field_type == ContactField.FIELD_TYPE_USER:
+                field_uuid = str(field.uuid)
+
+                contacts = (
+                    event.campaign.group.contacts.filter(is_active=True, is_blocked=False)
+                    .exclude(is_test=True)
+                    .extra(
+                        where=['%s::text[] <@ (extract_jsonb_keys("contacts_contact"."fields"))'],
+                        params=[[field_uuid]],
+                    )
                 )
-            )
+            elif field.field_type == ContactField.FIELD_TYPE_SYSTEM:
+                contacts = event.campaign.group.contacts.filter(is_active=True, is_blocked=False).exclude(is_test=True)
+            else:  # pragma: no cover
+                raise ValueError(f"Unhandled ContactField type {field.field_type}.")
 
             now = timezone.now()
             events = []
@@ -688,29 +713,31 @@ class EventFire(Model):
         # remove all pending fires for this contact
         EventFire.objects.filter(contact=contact, fired=None).delete()
 
-        # get all the groups this user is in
-        groups = [g.id for g in contact.cached_user_groups]
-
         # for each campaign that might affect us
         for campaign in Campaign.objects.filter(
-            group__in=groups, org=contact.org, is_active=True, is_archived=False
+            group__in=contact.user_groups, org=contact.org, is_active=True, is_archived=False
         ).distinct():
             # update all the events for the campaign
             EventFire.update_campaign_events_for_contact(campaign, contact)
 
     @classmethod
-    def update_events_for_contact_field(cls, contact, key):
+    def update_events_for_contact_fields(cls, contact, keys, is_new=False):
         """
         Updates all the events for a contact, across all campaigns.
         Should be called anytime a contact field or contact group membership changes.
         """
-        # get all the groups this user is in
-        groups = [_.id for _ in contact.cached_user_groups]
-
         # get all events which are in one of these groups and on this field
         events = CampaignEvent.objects.filter(
-            campaign__group__in=groups, relative_to__key=key, campaign__is_archived=False, is_active=True
+            campaign__group__in=contact.user_groups,
+            relative_to__key__in=keys,
+            campaign__is_archived=False,
+            is_active=True,
         ).prefetch_related("relative_to")
+
+        if is_new is False:
+            # only new contacts can trigger campaign event reevaluation that are relative to immutable fields
+            events.exclude(relative_to__key__in=ContactField.IMMUTABLE_FIELDS)
+
         for event in events:
             # remove any unfired events, they will get recreated below
             EventFire.objects.filter(event=event, contact=contact, fired=None).delete()

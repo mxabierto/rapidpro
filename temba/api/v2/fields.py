@@ -108,7 +108,7 @@ class URNField(serializers.CharField):
             return str(obj)
 
     def to_internal_value(self, data):
-        return validate_urn(data)
+        return validate_urn(str(data))
 
 
 class URNListField(LimitedListField):
@@ -206,6 +206,10 @@ class ContactFieldField(TembaModelField):
 
     def to_representation(self, obj):
         return {"key": obj.key, "label": obj.label}
+
+    def get_queryset(self):
+        manager = getattr(self.model, "all_fields")
+        return manager.filter(org=self.context["org"], is_active=True)
 
 
 class ContactGroupField(TembaModelField):

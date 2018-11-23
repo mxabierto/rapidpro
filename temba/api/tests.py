@@ -1,4 +1,3 @@
-import json
 from datetime import timedelta
 from urllib.parse import parse_qs
 from uuid import uuid4
@@ -7,8 +6,8 @@ from mock import patch
 
 from django.conf import settings
 from django.contrib.auth.models import Group
-from django.core.urlresolvers import reverse
 from django.test import override_settings
+from django.urls import reverse
 from django.utils import timezone
 
 from temba.api.models import APIToken, WebHookEvent, WebHookResult
@@ -19,6 +18,7 @@ from temba.flows.models import ActionSet, Flow, WebhookAction
 from temba.msgs.models import FAILED, Broadcast
 from temba.orgs.models import ALL_EVENTS
 from temba.tests import MockResponse, TembaTest, matchers
+from temba.utils import json
 
 
 class APITokenTest(TembaTest):

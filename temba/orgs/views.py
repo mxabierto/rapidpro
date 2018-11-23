@@ -1,5 +1,4 @@
 import itertools
-import json
 import logging
 from collections import OrderedDict
 from datetime import datetime, timedelta
@@ -20,7 +19,7 @@ from smartmin.views import (
     SmartTemplateView,
     SmartUpdateView,
 )
-from twilio.rest import TwilioRestClient
+from twilio.rest import Client
 
 from django import forms
 from django.conf import settings
@@ -28,14 +27,15 @@ from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.models import Group, User
 from django.core.exceptions import ValidationError
-from django.core.urlresolvers import reverse
 from django.core.validators import validate_email
 from django.db import IntegrityError
 from django.db.models import ExpressionWrapper, F, IntegerField, Q, Sum
 from django.forms import Form
 from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.encoding import DjangoUnicodeDecodeError, force_text
+from django.utils.html import escape
 from django.utils.http import urlquote
 from django.utils.safestring import mark_safe
 from django.utils.text import slugify
@@ -45,10 +45,10 @@ from django.views.generic import View
 
 from temba.api.models import APIToken
 from temba.campaigns.models import Campaign
-from temba.channels.models import Channel, ChannelCount
+from temba.channels.models import Channel
 from temba.flows.models import Flow
 from temba.formax import FormaxMixin
-from temba.utils import analytics, get_anonymous_user, languages
+from temba.utils import analytics, get_anonymous_user, json, languages
 from temba.utils.email import is_valid_address
 from temba.utils.http import http_headers
 from temba.utils.timezones import TimeZoneFormField
@@ -96,7 +96,7 @@ def check_login(request):
     check whether we are logged in, if so then we will redirect to the LOGIN_URL, otherwise we take
     them to the normal user login page
     """
-    if request.user.is_authenticated():
+    if request.user.is_authenticated:
         return HttpResponseRedirect(settings.LOGIN_REDIRECT_URL)
     else:
         return HttpResponseRedirect(settings.LOGIN_URL)
@@ -113,7 +113,7 @@ class OrgPermsMixin(object):
 
     def derive_org(self):
         org = None
-        if not self.get_user().is_anonymous():
+        if not self.get_user().is_anonymous:
             org = self.get_user().get_org()
         return org
 
@@ -134,7 +134,7 @@ class OrgPermsMixin(object):
         if self.get_user().is_superuser:
             return True
 
-        if self.get_user().is_anonymous():
+        if self.get_user().is_anonymous:
             return False
 
         if self.get_user().has_perm(self.permission):  # pragma: needs cover
@@ -146,7 +146,7 @@ class OrgPermsMixin(object):
 
         # non admin authenticated users without orgs get the org chooser
         user = self.get_user()
-        if user.is_authenticated() and not (user.is_superuser or user.is_staff):
+        if user.is_authenticated and not (user.is_superuser or user.is_staff):
             if not self.derive_org():
                 return HttpResponseRedirect(reverse("orgs.org_choose"))
 
@@ -253,9 +253,11 @@ class OrgSignupForm(forms.ModelForm):
     Signup for new organizations
     """
 
-    first_name = forms.CharField(help_text=_("Your first name"))
-    last_name = forms.CharField(help_text=_("Your last name"))
-    email = forms.EmailField(help_text=_("Your email address"))
+    first_name = forms.CharField(
+        help_text=_("Your first name"), max_length=User._meta.get_field("first_name").max_length
+    )
+    last_name = forms.CharField(help_text=_("Your last name"), max_length=User._meta.get_field("last_name").max_length)
+    email = forms.EmailField(help_text=_("Your email address"), max_length=User._meta.get_field("username").max_length)
     timezone = TimeZoneFormField(help_text=_("The timezone your organization is in"))
     password = forms.CharField(widget=forms.PasswordInput, help_text=_("Your password, at least eight letters please"))
     name = forms.CharField(label=_("Organization"), help_text=_("The name of your organization"))
@@ -287,9 +289,17 @@ class OrgSignupForm(forms.ModelForm):
 
 
 class OrgGrantForm(forms.ModelForm):
-    first_name = forms.CharField(help_text=_("The first name of the organization administrator"))
-    last_name = forms.CharField(help_text=_("Your last name of the organization administrator"))
-    email = forms.EmailField(help_text=_("Their email address"))
+    first_name = forms.CharField(
+        help_text=_("The first name of the organization administrator"),
+        max_length=User._meta.get_field("first_name").max_length,
+    )
+    last_name = forms.CharField(
+        help_text=_("Your last name of the organization administrator"),
+        max_length=User._meta.get_field("last_name").max_length,
+    )
+    email = forms.EmailField(
+        help_text=_("Their email address"), max_length=User._meta.get_field("username").max_length
+    )
     timezone = TimeZoneFormField(help_text=_("The timezone the organization is in"))
     password = forms.CharField(
         widget=forms.PasswordInput,
@@ -297,7 +307,7 @@ class OrgGrantForm(forms.ModelForm):
         help_text=_("Their password, at least eight letters please. (leave blank for existing users)"),
     )
     name = forms.CharField(label=_("Organization"), help_text=_("The name of the new organization"))
-    credits = forms.ChoiceField([], help_text=_("The initial number of credits granted to this organization."))
+    credits = forms.ChoiceField(choices=(), help_text=_("The initial number of credits granted to this organization."))
 
     def __init__(self, *args, **kwargs):
         branding = kwargs["branding"]
@@ -323,11 +333,11 @@ class OrgGrantForm(forms.ModelForm):
         # or both email and password must be included
         if email:
             user = User.objects.filter(username__iexact=email).first()
-            if user:  # pragma: needs cover
+            if user:
                 if password:
                     raise ValidationError(_("User already exists, please do not include password."))
 
-            elif not password or len(password) < 8:  # pragma: needs cover
+            elif not password or len(password) < 8:
                 raise ValidationError(_("Password must be at least 8 characters long"))
 
         return data
@@ -358,7 +368,7 @@ class UserCRUDL(SmartCRUDL):
                 more = ", ..."
                 orgs = orgs[0:5]
             org_links = ", ".join(
-                [f"<a href='{reverse('orgs.org_update', args=[org.id])}'>{org.name}</a>" for org in orgs]
+                [f"<a href='{reverse('orgs.org_update', args=[org.id])}'>{escape(org.name)}</a>" for org in orgs]
             )
             return mark_safe(f"{org_links}{more}")
 
@@ -464,7 +474,7 @@ class UserCRUDL(SmartCRUDL):
         def has_permission(self, request, *args, **kwargs):
             user = self.request.user
 
-            if user.is_anonymous():
+            if user.is_anonymous:
                 return False
 
             org = user.get_org()
@@ -472,7 +482,7 @@ class UserCRUDL(SmartCRUDL):
             if org:
                 org_users = org.administrators.all() | org.editors.all() | org.viewers.all() | org.surveyors.all()
 
-                if not user.is_authenticated():  # pragma: needs cover
+                if not user.is_authenticated:  # pragma: needs cover
                     return False
 
                 if user in org_users:
@@ -732,10 +742,10 @@ class OrgCRUDL(SmartCRUDL):
                     raise ValidationError(_("You must enter your Twilio Account Token"))
 
                 try:
-                    client = TwilioRestClient(account_sid, account_token)
+                    client = Client(account_sid, account_token)
 
                     # get the actual primary auth tokens from twilio and use them
-                    account = client.accounts.get(account_sid)
+                    account = client.api.account.fetch()
                     self.cleaned_data["account_sid"] = account.sid
                     self.cleaned_data["account_token"] = account.auth_token
                 except Exception:
@@ -1289,8 +1299,7 @@ class OrgCRUDL(SmartCRUDL):
             owner = obj.latest_admin() or obj.created_by
 
             return mark_safe(
-                "<div class='owner-name'>%s %s</div><div class='owner-email'>%s</div>"
-                % (owner.first_name, owner.last_name, owner)
+                f"<div class='owner-name'>{escape(owner.first_name)} {escape(owner.last_name)}</div><div class='owner-email'>{owner}</div>"
             )
 
         def get_service(self, obj):
@@ -1306,8 +1315,7 @@ class OrgCRUDL(SmartCRUDL):
                 suspended = '<span class="suspended">(Suspended)</span>'
 
             return mark_safe(
-                "<div class='org-name'>%s %s</div><div class='org-timezone'>%s</div>"
-                % (suspended, obj.name, obj.timezone)
+                f"<div class='org-name'>{suspended} {escape(obj.name)}</div><div class='org-timezone'>{obj.timezone}</div>"
             )
 
         def derive_queryset(self, **kwargs):
@@ -1322,7 +1330,6 @@ class OrgCRUDL(SmartCRUDL):
             queryset = queryset.annotate(paid=Sum("topups__price"))
 
             return queryset
-
 
         def lookup_field_link(self, context, field, obj):
             if field == "owner":
@@ -1655,16 +1662,17 @@ class OrgCRUDL(SmartCRUDL):
     class Service(SmartFormView):
         class ServiceForm(forms.Form):
             organization = forms.ModelChoiceField(queryset=Org.objects.all(), empty_label=None)
+            redirect_url = forms.CharField(required=False)
 
         form_class = ServiceForm
-        success_url = "@msgs.msg_inbox"
-        fields = ("organization",)
+        fields = ("organization", "redirect_url")
 
         # valid form means we set our org and redirect to their inbox
         def form_valid(self, form):
             org = form.cleaned_data["organization"]
             self.request.session["org_id"] = org.pk
-            return HttpResponseRedirect(self.get_success_url())
+            success_url = form.cleaned_data["redirect_url"] or reverse("msgs.msg_inbox")
+            return HttpResponseRedirect(success_url)
 
         # invalid form login 'logs out' the user from the org and takes them to the org manage page
         def form_invalid(self, form):
@@ -1715,8 +1723,7 @@ class OrgCRUDL(SmartCRUDL):
                 org_type = "parent"
 
             return mark_safe(
-                "<div class='%s-org-name'>%s</div><div class='org-timezone'>%s</div>"
-                % (org_type, obj.name, obj.timezone)
+                f"<div class='{org_type}-org-name'>{escape(obj.name)}</div><div class='org-timezone'>{obj.timezone}</div>"
             )
 
         def derive_queryset(self, **kwargs):
@@ -1843,7 +1850,7 @@ class OrgCRUDL(SmartCRUDL):
 
         def pre_process(self, request, *args, **kwargs):
             user = self.request.user
-            if user.is_authenticated():
+            if user.is_authenticated:
                 user_orgs = self.get_user_orgs()
 
                 if user.is_superuser or user.is_staff:
@@ -1873,7 +1880,7 @@ class OrgCRUDL(SmartCRUDL):
             return context
 
         def has_permission(self, request, *args, **kwargs):
-            return self.request.user.is_authenticated()
+            return self.request.user.is_authenticated
 
         def customize_form_field(self, name, field):  # pragma: needs cover
             if name == "organization":
@@ -1997,7 +2004,7 @@ class OrgCRUDL(SmartCRUDL):
                 )
                 return HttpResponseRedirect(reverse("public.public_index"))
 
-            if not request.user.is_authenticated():
+            if not request.user.is_authenticated:
                 return HttpResponseRedirect(reverse("orgs.org_create_login", args=[secret]))
             return None
 
@@ -2247,7 +2254,7 @@ class OrgCRUDL(SmartCRUDL):
             obj = super().post_save(obj)
             obj.administrators.add(self.user)
 
-            if not self.request.user.is_anonymous() and self.request.user.has_perm(
+            if not self.request.user.is_anonymous and self.request.user.has_perm(
                 "orgs.org_grant"
             ):  # pragma: needs cover
                 obj.administrators.add(self.request.user.pk)
@@ -2284,12 +2291,17 @@ class OrgCRUDL(SmartCRUDL):
             return welcome_topup_size
 
         def post_save(self, obj):
+            user = authenticate(username=self.user.username, password=self.form.cleaned_data["password"])
+
+            # setup user tracking before creating Org in super().post_save
+            analytics.identify(user, brand=self.request.branding["slug"], org=obj)
+            analytics.track(email=user.username, event_name="temba.org_signup", properties=dict(org=obj.name))
+
             obj = super().post_save(obj)
+
             self.request.session["org_id"] = obj.pk
 
-            user = authenticate(username=self.user.username, password=self.form.cleaned_data["password"])
             login(self.request, user)
-            analytics.track(self.request.user.username, "temba.org_signup", dict(org=obj.name))
 
             return obj
 
@@ -2721,10 +2733,10 @@ class OrgCRUDL(SmartCRUDL):
                         raise ValidationError(_("You must enter your Twilio Account Token"))
 
                     try:
-                        client = TwilioRestClient(account_sid, account_token)
+                        client = Client(account_sid, account_token)
 
                         # get the actual primary auth tokens from twilio and use them
-                        account = client.accounts.get(account_sid)
+                        account = client.api.account.fetch()
                         self.cleaned_data["account_sid"] = account.sid
                         self.cleaned_data["account_token"] = account.auth_token
                     except Exception:  # pragma: needs cover
@@ -2794,7 +2806,7 @@ class OrgCRUDL(SmartCRUDL):
 
         def get_context_data(self, **kwargs):
             context = super().get_context_data(**kwargs)
-            sub_orgs = Org.objects.filter(parent=self.get_object())
+            sub_orgs = Org.objects.filter(is_active=True, parent=self.get_object())
             context["sub_orgs"] = sub_orgs
             return context
 
