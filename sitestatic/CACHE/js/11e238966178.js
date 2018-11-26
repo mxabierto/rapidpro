@@ -1,1 +1,0 @@
-var static_url='/sitestatic/';
