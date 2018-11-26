@@ -242,4 +242,9 @@ $(document).ready(function() {
     $(".page-content").on('click', ".object-btn-resend", function() {
 	runActionOnObjectRows("resend");
     });
+    /* BEGIN Mx abierto change */
+    $(".page-content").on('click', ".object-btn-send-notification", function() {
+      runActionOnObjectRows("send-notification");
+    });
+    /* END Mx abierto change */
 });

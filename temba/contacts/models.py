@@ -2438,6 +2438,7 @@ class Contact(RequireUpdateFieldsMixin, TembaModel):
 
     def add_field_to_contact(self, label, field, value, org):
         branding = org.get_branding()
+        from django.contrib.auth.models import User
         email = branding['support_email']
         username = '%s_flow' % branding['slug']
         user = User.objects.filter(username=username).first()

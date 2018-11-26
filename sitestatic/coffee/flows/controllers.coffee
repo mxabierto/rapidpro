@@ -208,8 +208,8 @@ app.controller 'FlowController', [ '$scope', '$rootScope', '$timeout', '$log', '
         showDialog('Invalid Attachment', 'Attachments must be either video, audio, or an image.')
         return
 
-      if media_type == 'audio' and media_encoding != 'mp3'
-        showDialog('Invalid Format', 'Audio attachments must be encoded as mp3 files.')
+      if media_type == 'audio' and media_encoding not in ['mp3', 'm4a', 'x-m4a', 'wav', 'ogg', 'oga']
+        showDialog('Invalid Format', 'Audio attachments must be encoded as mp3, m4a, wav, ogg or oga files.')
         return
 
     if action.type in ['reply', 'send'] and (file.size > 20000000 or (file.name.endsWith('.jpg') and file.size > 500000))
@@ -267,7 +267,7 @@ app.controller 'FlowController', [ '$scope', '$rootScope', '$timeout', '$log', '
       if action.type in ['reply', 'send']
         if not action.media
           action.media = {}
-        action.media[Flow.language.iso_code] = file.type + ':' + data['path']
+        action.media[Flow.language.iso_code] = data['type'] + ':' + data['url']
 
       # make sure our translation state is updated
       action.uploading = false
@@ -1229,8 +1229,8 @@ NodeEditorController = ($rootScope, $scope, $modalInstance, $timeout, $log, Flow
     url = "/flow/?_format=select2"
     if Flow.flow.flow_type == 'S'
       return url + "&flow_type=S"
-    if Flow.flow.flow_type == 'F'
-      return url + "&flow_type=F&flow_type=V"
+    if Flow.flow.flow_type == 'M'
+      return url + "&flow_type=M&flow_type=V"
     if Flow.flow.flow_type == 'V'
       return url + "&flow_type=V"
     return url
